@@ -1,5 +1,6 @@
 package com.todo.todolist.repository;
 
+import com.todo.todolist.entity.Category;
 import com.todo.todolist.entity.ScheduleItem;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -18,4 +19,6 @@ public interface ScheduleItemRepository extends JpaRepository<ScheduleItem, Long
 
     @Query("SELECT MAX(s.completedOrder) FROM ScheduleItem s")
     Integer findMaxCompletedOrder();
+
+    void deleteByCategory(Category category);
 }

@@ -3,6 +3,7 @@ package com.todo.todolist.service;
 import com.todo.todolist.dto.CategoryRequest;
 import com.todo.todolist.entity.Category;
 import com.todo.todolist.repository.CategoryRepository;
+import com.todo.todolist.repository.ScheduleItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +17,7 @@ public class CategoryService {
 
     private static final int MAX_CATEGORIES = 8;
     private final CategoryRepository categoryRepository;
+    private final ScheduleItemRepository scheduleItemRepository;
 
     public List<Category> findAll() {
         return categoryRepository.findAll();
@@ -49,6 +51,9 @@ public class CategoryService {
 
     @Transactional
     public void delete(Long id) {
-        categoryRepository.deleteById(id);
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("카테고리를 찾을 수 없습니다."));
+        scheduleItemRepository.deleteByCategory(category);
+        categoryRepository.delete(category);
     }
 }
