@@ -9,5 +9,7 @@ public record ScheduleItemRequest(
         LocalDate endDate,
         Integer priority,
         String priorityLabel,
-        Long categoryId
+        Long categoryId,
+        RepeatRuleDto repeatRule,
+        UpdateType updateType
 ) {}

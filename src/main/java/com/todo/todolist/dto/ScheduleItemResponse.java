@@ -15,9 +15,15 @@ public record ScheduleItemResponse(
         Integer sortOrder,
         Boolean completed,
         Integer completedOrder,
-        Long categoryId
+        Long categoryId,
+        boolean repeatOrigin,
+        Integer repeatSeq,
+        Long repeatRuleId
+
 ) {
+    // ScheduleItem 엔티티를 응답 DTO로 변환
     public static ScheduleItemResponse from(ScheduleItem item) {
+        // category, repeatRule은 null 가능하므로 null-safe 처리
         return new ScheduleItemResponse(
                 item.getId(),
                 item.getTitle(),
@@ -29,7 +35,10 @@ public record ScheduleItemResponse(
                 item.getSortOrder(),
                 item.getCompleted(),
                 item.getCompletedOrder(),
-                item.getCategory() != null ? item.getCategory().getId() : null
+                item.getCategory() != null ? item.getCategory().getId() : null,
+                item.isRepeatOrigin(),
+                item.getRepeatSeq(),
+                item.getRepeatRule() != null ? item.getRepeatRule().getId() : null
         );
     }
 }

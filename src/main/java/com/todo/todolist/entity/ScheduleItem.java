@@ -47,4 +47,16 @@ public class ScheduleItem {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;
+
+    // 반복 기능 추가 :: 260521
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "REPEAT_RULE_ID")
+    private RepeatRule repeatRule;
+
+    // Lombok boolean + is 접두어 충돌 방지로 repeatOrigin 사용
+    @Column(name = "IS_REPEAT_ORIGIN", nullable = false)
+    private boolean repeatOrigin;
+
+    @Column(name = "REPEAT_SEQ")
+    private Integer repeatSeq;
 }
