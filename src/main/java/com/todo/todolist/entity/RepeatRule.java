@@ -31,13 +31,16 @@ public class RepeatRule {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "REPEAT_END_TYPE", nullable = false)
+    // 반복 종료 유형(none, count, date)
     private RepeatEndType repeatEndType;
 
-    @Column(name = "REPEAT_END_DATE")
-    private LocalDate repeatEndDate;
-
     @Column(name = "REPEAT_COUNT")
+    // 일정 반복 횟수(RepeatEndType -> count)
     private Integer repeatCount;
+
+    @Column(name = "REPEAT_END_DATE")
+    // 종료 날짜(RepeatEndType -> date)
+    private LocalDate repeatEndDate;
 
     @Column(name = "REG_DATE", nullable = false, updatable = false)
     private LocalDateTime regDate;
@@ -48,9 +51,14 @@ public class RepeatRule {
         this.regDate = LocalDateTime.now();
     }
     public enum RepeatType {
-        daily, weekly, monthly, yearly;
+        daily,      // n일마다
+        weekly,     // n주마다
+        monthly,    // n개월마다
+        yearly;     // n년마다
     }
     public enum RepeatEndType {
-        none, date, count
+        none,       // 계속 반복
+        count,      // 일정 반복 횟수
+        date        // 종료 날짜
     }
 }

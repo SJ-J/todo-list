@@ -19,7 +19,6 @@ public record ScheduleItemResponse(
         boolean repeatOrigin,
         Integer repeatSeq,
         Long repeatRuleId
-
 ) {
     // ScheduleItem 엔티티를 응답 DTO로 변환
     public static ScheduleItemResponse from(ScheduleItem item) {

@@ -17,6 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -98,14 +99,19 @@ public class ScheduleItemService {
         */
         Integer maxOrder = scheduleItemRepository.findMaxSortOrder();
         int nextOrder = (maxOrder == null ? 0 : maxOrder) + 1;
+        long durationDays = ChronoUnit.DAYS.between(
+                request.startDate(),
+                request.endDate() != null ? request.endDate() : request.startDate()
+        );
 
         List<ScheduleItem> items = new ArrayList<>();
         for (int i = 0; i < dates.size(); i++) {
+            LocalDate repeatStartDate = dates.get(i);
             items.add(ScheduleItem.builder()
                     .title(request.title())
                     .memo(request.memo())
-                    .startDate(dates.get(i))
-                    .endDate(dates.get(i))
+                    .startDate(repeatStartDate)
+                    .endDate(repeatStartDate.plusDays(durationDays))
                     .priority(request.priority())
                     .priorityLabel(request.priorityLabel())
                     .sortOrder(nextOrder + i)
