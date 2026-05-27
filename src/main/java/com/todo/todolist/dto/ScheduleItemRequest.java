@@ -4,6 +4,7 @@ import java.time.LocalDate;
 
 public record ScheduleItemRequest(
         String title,
+        String emoji,
         String memo,
         LocalDate startDate,
         LocalDate endDate,

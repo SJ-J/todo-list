@@ -7,6 +7,7 @@ import java.time.LocalDate;
 public record ScheduleItemResponse(
         Long id,
         String title,
+        String emoji,
         String memo,
         LocalDate startDate,
         LocalDate endDate,
@@ -26,6 +27,7 @@ public record ScheduleItemResponse(
         return new ScheduleItemResponse(
                 item.getId(),
                 item.getTitle(),
+                item.getEmoji(),
                 item.getMemo(),
                 item.getStartDate(),
                 item.getEndDate(),

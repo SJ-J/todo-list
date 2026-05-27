@@ -60,6 +60,7 @@ public class ScheduleItemService {
         // endDate 미입력 시 startDate로 대체하여 엔티티 생성
         ScheduleItem item = ScheduleItem.builder()
                 .title(request.title())
+                .emoji(request.emoji())
                 .memo(request.memo())
                 .startDate(request.startDate())
                 .endDate(request.endDate() != null ? request.endDate() : request.startDate())
@@ -109,6 +110,7 @@ public class ScheduleItemService {
             LocalDate repeatStartDate = dates.get(i);
             items.add(ScheduleItem.builder()
                     .title(request.title())
+                    .emoji(request.emoji())
                     .memo(request.memo())
                     .startDate(repeatStartDate)
                     .endDate(repeatStartDate.plusDays(durationDays))
@@ -204,6 +206,7 @@ public class ScheduleItemService {
     // THIS_ONLY 또는 비반복 일정 수정(날짜 포함)
     private void applyFullUpdate(ScheduleItem item, ScheduleItemRequest request) {
         item.setTitle(request.title());
+        item.setEmoji(request.emoji());
         item.setMemo(request.memo());
         item.setStartDate(request.startDate());
         item.setEndDate(request.endDate() != null ? request.endDate() : request.startDate());
@@ -215,6 +218,7 @@ public class ScheduleItemService {
     // FROM_THIS, ALL 수정(날짜 유지, 내용만 변경)
     private void applyContentUpdate(ScheduleItem item, ScheduleItemRequest request) {
         item.setTitle(request.title());
+        item.setEmoji(request.emoji());
         item.setMemo(request.memo());
         item.setPriority(request.priority());
         item.setPriorityLabel(request.priorityLabel());

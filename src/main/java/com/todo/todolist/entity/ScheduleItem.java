@@ -21,6 +21,10 @@ public class ScheduleItem {
     @Column(nullable = false, length = 200)
     private String title;
 
+    /* 제목 앞 표시용 이모지 */
+    @Column(length = 20)
+    private String emoji;
+
     @Column(columnDefinition = "TEXT")
     private String memo;
 
