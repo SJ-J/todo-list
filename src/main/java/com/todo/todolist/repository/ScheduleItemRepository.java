@@ -12,8 +12,12 @@ import java.util.List;
 
 public interface ScheduleItemRepository extends JpaRepository<ScheduleItem, Long> {
 
+    // 전체 일정 조회 + 각 일정에 연결된 반복 규칙(repeatRule) 함께 로딩
+    @Query("SELECT s FROM ScheduleItem s LEFT JOIN FETCH s.repeatRule ORDER BY s.sortOrder")
+    List<ScheduleItem> findAllWithRepeatRule();
+
     // 해당 날짜를 포함하는 일정 조회(정렬 순서 기준 오름차순)
-    @Query("SELECT s FROM ScheduleItem s WHERE s.startDate <= :date AND s.endDate >= :date ORDER BY s.sortOrder")
+    @Query("SELECT s FROM ScheduleItem s LEFT JOIN FETCH s.repeatRule WHERE s.startDate <= :date AND s.endDate >= :date ORDER BY s.sortOrder")
     List<ScheduleItem> findByDate(@Param("date") LocalDate date);
 
     // 현재 최대 정렬 순서 조회(신규 일정 순서 부여 용)

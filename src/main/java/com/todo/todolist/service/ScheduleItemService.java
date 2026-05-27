@@ -34,8 +34,7 @@ public class ScheduleItemService {
 
     // 전체 일정 목록 조회
     public List<ScheduleItemResponse> findAll() {
-        // 전체 일정을 DTO로 변환하여 반환
-        return scheduleItemRepository.findAll().stream()
+        return scheduleItemRepository.findAllWithRepeatRule().stream()
                 .map(ScheduleItemResponse::from)
                 .toList();
     }
@@ -138,8 +137,8 @@ public class ScheduleItemService {
 
         UpdateType updateType = request.updateType() != null ? request.updateType() : UpdateType.THIS_ONLY;
 
-        if (item.getRepeatRule() != null || updateType == UpdateType.THIS_ONLY) {
-            // 선택된 날짜 포함 전체 수정
+        if (item.getRepeatRule() == null || updateType == UpdateType.THIS_ONLY) {
+            // 미반복 또는 이 일정만(날짜 포함) 수정
             applyFullUpdate(item, request);
         } else if (updateType == UpdateType.FROM_THIS) {
             // 이후 일정 날짜 유지, 내용만 수정
