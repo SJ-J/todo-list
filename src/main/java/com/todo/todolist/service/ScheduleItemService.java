@@ -21,6 +21,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -131,35 +132,150 @@ public class ScheduleItemService {
     // ID로 일정 조회 후 요청 데이터로 필드 업데이트
     @Transactional
     public ScheduleItemResponse update(Long id, ScheduleItemRequest request) {
-        // 존재하지 않는 ID 요청 시 예외 발생
+        // 수정 대상 일정 조회
         ScheduleItem item = scheduleItemRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없습니다."));
 
         UpdateType updateType = request.updateType() != null ? request.updateType() : UpdateType.THIS_ONLY;
+        boolean ruleChanged = isRepeatRuleChanged(item.getRepeatRule(), request.repeatRule());
 
+        // 반복 일정이 아니거나 이 일정만 수정하는 경우
         if (item.getRepeatRule() == null || updateType == UpdateType.THIS_ONLY) {
-            // 미반복 또는 이 일정만(날짜 포함) 수정
+            // 이 일정만 수정 시 주기 변경 시도하면 예외 발생
+            if (ruleChanged) {
+                throw new IllegalArgumentException("반복 주기는 해당 일정만 수정할 수 없습니다.");
+            }
+            // 상세 정보 업데이트 및 개별 수정 여부 마킹
             applyFullUpdate(item, request);
-        } else if (updateType == UpdateType.FROM_THIS) {
-            // 이후 일정 날짜 유지, 내용만 수정
-            scheduleItemRepository.findByRepeatRuleAndRepeatSeqGreaterThanEqual(item.getRepeatRule(), item.getRepeatSeq())
-                    .forEach(i -> applyContentUpdate(i, request));
+            if (item.getRepeatRule() != null) {
+                item.setCustomized(true);
+            }
         } else {
-            // ALL: 내용 수정
-            scheduleItemRepository.findByRepeatRule(item.getRepeatRule())
-                    .forEach(i -> applyContentUpdate(i, request));
+            // 이후 또는 전체 수정
+            if (ruleChanged) {
+                // 주기 변경 시 기존 삭제 후 재생성
+                return ScheduleItemResponse.from(updateRepeatRule(item, request, updateType));
+            } else {
+                // 내용만 변경 시 개별 수정된 일정 제외하고 업데이트
+                updateContentOnly(item, request, updateType);
+            }
         }
 
-        // endDate 미입력 시 startDate로 대체하여 각 필드 갱신
-//        item.setTitle(request.title());
-//        item.setMemo(request.memo());
-//        item.setStartDate(request.startDate());
-//        item.setEndDate(request.endDate() != null ? request.endDate() : request.startDate());
-//        item.setPriority(request.priority());
-//        item.setPriorityLabel(request.priorityLabel());
-//        item.setCategory(resolveCategory(request.categoryId()));
-
         return ScheduleItemResponse.from(item);
+    }
+
+    // 반복 규칙 변경 여부 확인
+    private boolean isRepeatRuleChanged(RepeatRule entity, RepeatRuleDto dto) {
+        // 둘 다 없으면 변경 없음
+        if (entity == null && dto == null) return false;
+        // 한쪽만 있거나 필드 값이 다르면 변경됨으로 간주
+        // 요청 규칙이 없으면 내용 수정으로 처리
+        if (dto == null) return false;
+        if (entity == null) return true;
+
+        return entity.getRepeatType() != dto.repeatType() ||
+                entity.getRepeatInterval() != dto.repeatInterval() ||
+                !Objects.equals(entity.getRepeatDays(), dto.repeatDays()) ||
+                entity.getRepeatEndType() != dto.repeatEndType() ||
+                !Objects.equals(entity.getRepeatEndDate(), dto.repeatEndDate()) ||
+                !Objects.equals(entity.getRepeatCount(), dto.repeatCount());
+    }
+
+    // 내용만 일괄 변경 (개별 수정 일정 보호)
+    private void updateContentOnly(ScheduleItem item, ScheduleItemRequest request, UpdateType updateType) {
+        List<ScheduleItem> targets;
+        if (updateType == UpdateType.FROM_THIS) {
+            // 현재 순번 이후 일정 조회
+            targets = scheduleItemRepository.findByRepeatRuleAndRepeatSeqGreaterThanEqualOrderByRepeatSeqAsc(item.getRepeatRule(), item.getRepeatSeq());
+        } else {
+            // 전체 일정 조회
+            targets = scheduleItemRepository.findByRepeatRuleOrderByRepeatSeqAsc(item.getRepeatRule());
+        }
+
+        // 개별 수정되지 않은 일정들만 골라서 내용 업데이트
+        targets.stream()
+                .filter(i -> !i.isCustomized())
+                .forEach(i -> applyContentUpdate(i, request));
+    }
+
+    // 반복 주기 변경 처리 (삭제 후 재생성)
+    private ScheduleItem updateRepeatRule(ScheduleItem item, ScheduleItemRequest request, UpdateType updateType) {
+        RepeatRule oldRule = item.getRepeatRule();
+        LocalDate baseStartDate;
+        long durationDays;
+
+        if (updateType == UpdateType.FROM_THIS) {
+            // 재생성 일정 기간 기준 계산
+            durationDays = resolveDurationDays(item, request);
+            // 현재 일정 포함 이후 일정들 삭제
+            List<ScheduleItem> targets = scheduleItemRepository.findByRepeatRuleAndRepeatSeqGreaterThanEqualOrderByRepeatSeqAsc(oldRule, item.getRepeatSeq());
+            scheduleItemRepository.deleteAll(targets);
+
+            // 재생성 기준일 설정: 요청 startDate 우선, 없으면 현재 일정의 기존 시작일 사용
+            baseStartDate = request.startDate() != null ? request.startDate() : item.getStartDate();
+        } else {
+            // ALL: 해당 규칙의 모든 일정 삭제
+            List<ScheduleItem> targets = scheduleItemRepository.findByRepeatRuleOrderByRepeatSeqAsc(oldRule);
+            // 첫 번째 일정의 시작일을 전체 재생성의 기준일로 사용
+            ScheduleItem firstItem = targets.get(0);
+            baseStartDate = firstItem.getStartDate();
+            // 전체 재생성 일정 기간 기준 계산
+            durationDays = resolveDurationDays(firstItem, request);
+
+            scheduleItemRepository.deleteAll(targets);
+            repeatRuleRepository.delete(oldRule);
+        }
+
+        // 새로운 반복 규칙 저장
+        RepeatRuleDto rd = request.repeatRule();
+        RepeatRule newRule = repeatRuleRepository.save(RepeatRule.builder()
+                .repeatType(rd.repeatType())
+                .repeatInterval(rd.repeatInterval())
+                .repeatDays(rd.repeatDays())
+                .repeatEndType(rd.repeatEndType())
+                .repeatEndDate(rd.repeatEndDate())
+                .repeatCount(rd.repeatCount())
+                .build());
+
+        // 새로운 규칙에 따라 날짜 목록 계산
+        List<LocalDate> dates = calculateRepeatDates(baseStartDate, rd);
+
+        // 새로운 일정들 생성 및 저장
+        Integer maxOrder = scheduleItemRepository.findMaxSortOrder();
+        int nextOrder = (maxOrder == null ? 0 : maxOrder) + 1;
+
+        Category category = resolveCategory(request.categoryId());
+        List<ScheduleItem> newItems = new ArrayList<>();
+        for (int i = 0; i < dates.size(); i++) {
+            LocalDate startDate = dates.get(i);
+            newItems.add(ScheduleItem.builder()
+                    .title(request.title())
+                    .emoji(request.emoji())
+                    .memo(request.memo())
+                    .startDate(startDate)
+                    .endDate(startDate.plusDays(durationDays))
+                    .priority(request.priority())
+                    .priorityLabel(request.priorityLabel())
+                    .sortOrder(nextOrder + i)
+                    .completed(false) // 신규 생성 시 미완료 초기화
+                    .category(category)
+                    .repeatRule(newRule)
+                    .repeatOrigin(i == 0)
+                    .repeatSeq(i + 1)
+                    .customized(false)
+                    .build());
+        }
+        return scheduleItemRepository.saveAll(newItems).get(0);
+    }
+
+    // 요청 기간이 있으면 계산하고 없으면 기존 일정 기간 유지
+    private long resolveDurationDays(ScheduleItem item, ScheduleItemRequest request) {
+        if (request.startDate() != null || request.endDate() != null) {
+            LocalDate startDate = request.startDate() != null ? request.startDate() : item.getStartDate();
+            LocalDate endDate = request.endDate() != null ? request.endDate() : startDate;
+            return ChronoUnit.DAYS.between(startDate, endDate);
+        }
+        return ChronoUnit.DAYS.between(item.getStartDate(), item.getEndDate());
     }
 
     // 일정 완료 상태 전환 및 완료 순서 갱신

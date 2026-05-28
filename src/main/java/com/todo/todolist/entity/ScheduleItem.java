@@ -63,4 +63,9 @@ public class ScheduleItem {
 
     @Column(name = "REPEAT_SEQ")
     private Integer repeatSeq;
+
+    // 개별 수정 여부
+    @Column(name = "IS_CUSTOMIZED", nullable = false)
+    @Builder.Default
+    private boolean customized = false;
 }

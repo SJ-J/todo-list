@@ -35,4 +35,10 @@ public interface ScheduleItemRepository extends JpaRepository<ScheduleItem, Long
 
     // 이후 일정 조회(이후 일정 수정/삭제 용)
     List<ScheduleItem> findByRepeatRuleAndRepeatSeqGreaterThanEqual(RepeatRule repeatRule, int seq);
+
+    // 반복 규칙에 속한 모든 일정 순서대로 조회
+    List<ScheduleItem> findByRepeatRuleOrderByRepeatSeqAsc(RepeatRule repeatRule);
+
+    // 특정 순번 이후의 모든 일정 순서대로 조회
+    List<ScheduleItem> findByRepeatRuleAndRepeatSeqGreaterThanEqualOrderByRepeatSeqAsc(RepeatRule repeatRule, int seq);
 }
