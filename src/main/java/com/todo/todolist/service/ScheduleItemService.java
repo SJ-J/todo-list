@@ -58,19 +58,16 @@ public class ScheduleItemService {
         Category category = resolveCategory(request.categoryId());
 
         // endDate 미입력 시 startDate로 대체하여 엔티티 생성
-        ScheduleItem item = ScheduleItem.builder()
-                .title(request.title())
-                .emoji(request.emoji())
-                .memo(request.memo())
-                .startDate(request.startDate())
-                .endDate(request.endDate() != null ? request.endDate() : request.startDate())
-                .priority(request.priority())
-                .priorityLabel(request.priorityLabel())
-                .sortOrder(nextOrder)
-                .completed(false)
-                .completedOrder(null)
-                .category(category)
-                .build();
+        ScheduleItem item = buildScheduleItem(
+                request,
+                request.startDate(),
+                request.endDate() != null ? request.endDate() : request.startDate(),
+                nextOrder,
+                category,
+                null,
+                false,
+                null
+        );
 
         return ScheduleItemResponse.from(scheduleItemRepository.save(item));
     }
@@ -82,14 +79,7 @@ public class ScheduleItemService {
         Category category = resolveCategory(request.categoryId());
 
         // 1. Repeat Rule 저장
-        RepeatRule repeatRule = repeatRuleRepository.save(RepeatRule.builder()
-                .repeatType(repeatRuleDto.repeatType())
-                .repeatInterval(repeatRuleDto.repeatInterval())
-                .repeatDays(repeatRuleDto.repeatDays())
-                .repeatEndType(repeatRuleDto.repeatEndType())
-                .repeatEndDate(repeatRuleDto.repeatEndDate())
-                .repeatCount(repeatRuleDto.repeatCount())
-                .build());
+        RepeatRule repeatRule = saveRepeatRule(repeatRuleDto);
 
         // 2. 반복 날짜 목록 계산
         List<LocalDate> dates = calculateRepeatDates(request.startDate(), repeatRuleDto);
@@ -105,25 +95,7 @@ public class ScheduleItemService {
                 request.endDate() != null ? request.endDate() : request.startDate()
         );
 
-        List<ScheduleItem> items = new ArrayList<>();
-        for (int i = 0; i < dates.size(); i++) {
-            LocalDate repeatStartDate = dates.get(i);
-            items.add(ScheduleItem.builder()
-                    .title(request.title())
-                    .emoji(request.emoji())
-                    .memo(request.memo())
-                    .startDate(repeatStartDate)
-                    .endDate(repeatStartDate.plusDays(durationDays))
-                    .priority(request.priority())
-                    .priorityLabel(request.priorityLabel())
-                    .sortOrder(nextOrder + i)
-                    .completed(false)
-                    .category(category)
-                    .repeatRule(repeatRule)
-                    .repeatOrigin(i == 0)
-                    .repeatSeq(i + 1)
-                    .build());
-        }
+        List<ScheduleItem> items = buildRepeatItems(request, dates, durationDays, nextOrder, category, repeatRule, 0);
         return scheduleItemRepository.saveAll(items).stream()
                 .map(ScheduleItemResponse::from)
                 .toList();
@@ -138,6 +110,11 @@ public class ScheduleItemService {
 
         UpdateType updateType = request.updateType() != null ? request.updateType() : UpdateType.THIS_ONLY;
         boolean ruleChanged = isRepeatRuleChanged(item.getRepeatRule(), request.repeatRule());
+
+        // 단건 일정을 반복 일정으로 전환하는 경우
+        if (item.getRepeatRule() == null && request.repeatRule() != null) {
+            return ScheduleItemResponse.from(convertSingleToRepeat(item, request));
+        }
 
         // 반복 일정이 아니거나 이 일정만 수정하는 경우
         if (item.getRepeatRule() == null || updateType == UpdateType.THIS_ONLY) {
@@ -160,7 +137,6 @@ public class ScheduleItemService {
                 updateContentOnly(item, request, updateType);
             }
         }
-
         return ScheduleItemResponse.from(item);
     }
 
@@ -179,6 +155,115 @@ public class ScheduleItemService {
                 entity.getRepeatEndType() != dto.repeatEndType() ||
                 !Objects.equals(entity.getRepeatEndDate(), dto.repeatEndDate()) ||
                 !Objects.equals(entity.getRepeatCount(), dto.repeatCount());
+    }
+
+    // 반복 규칙 엔티티 저장
+    private RepeatRule saveRepeatRule(RepeatRuleDto repeatRuleDto) {
+        return repeatRuleRepository.save(RepeatRule.builder()
+                .repeatType(repeatRuleDto.repeatType())
+                .repeatInterval(repeatRuleDto.repeatInterval())
+                .repeatDays(repeatRuleDto.repeatDays())
+                .repeatEndType(repeatRuleDto.repeatEndType())
+                .repeatEndDate(repeatRuleDto.repeatEndDate())
+                .repeatCount(repeatRuleDto.repeatCount())
+                .build());
+    }
+
+    // 요청 정보로 일정 엔티티 생성
+    private ScheduleItem buildScheduleItem(
+            ScheduleItemRequest request,
+            LocalDate startDate,
+            LocalDate endDate,
+            int sortOrder,
+            Category category,
+            RepeatRule repeatRule,
+            boolean repeatOrigin,
+            Integer repeatSeq
+    ) {
+        return ScheduleItem.builder()
+                .title(request.title())
+                .emoji(request.emoji())
+                .memo(request.memo())
+                .startDate(startDate)
+                .endDate(endDate)
+                .priority(request.priority())
+                .priorityLabel(request.priorityLabel())
+                .sortOrder(sortOrder)
+                .completed(false)
+                .completedOrder(null)
+                .category(category)
+                .repeatRule(repeatRule)
+                .repeatOrigin(repeatOrigin)
+                .repeatSeq(repeatSeq)
+                .customized(false)
+                .build();
+    }
+
+    // 반복 날짜 목록으로 일정 엔티티 생성
+    private List<ScheduleItem> buildRepeatItems(
+            ScheduleItemRequest request,
+            List<LocalDate> dates,
+            long durationDays,
+            int startSortOrder,
+            Category category,
+            RepeatRule repeatRule,
+            int startIndex
+    ) {
+        List<ScheduleItem> items = new ArrayList<>();
+        for (int i = startIndex; i < dates.size(); i++) {
+            LocalDate startDate = dates.get(i);
+            items.add(buildScheduleItem(
+                    request,
+                    startDate,
+                    startDate.plusDays(durationDays),
+                    startSortOrder + i - startIndex,
+                    category,
+                    repeatRule,
+                    i == 0,
+                    i + 1
+            ));
+        }
+        return items;
+    }
+
+    // 단건 일정을 반복 일정으로 변환
+    private ScheduleItem convertSingleToRepeat(ScheduleItem item, ScheduleItemRequest request) {
+        RepeatRuleDto rd = request.repeatRule();
+
+        // 새 반복 규칙 저장
+        RepeatRule newRule = saveRepeatRule(rd);
+
+        // 반복 시작일과 기간 기준으로 생성할 날짜 계산
+        LocalDate baseStartDate = request.startDate() != null ? request.startDate() : item.getStartDate();
+        long durationDays = resolveDurationDays(item, request);
+        List<LocalDate> dates = calculateRepeatDates(baseStartDate, rd);
+        if (dates.isEmpty()) {
+            throw new IllegalArgumentException("생성할 반복 일정이 없습니다.");
+        }
+
+        Integer maxOrder = scheduleItemRepository.findMaxSortOrder();
+        int nextOrder = (maxOrder == null ? 0 : maxOrder) + 1;
+        Category category = resolveCategory(request.categoryId());
+
+        // 기존 단건 일정을 첫 반복 일정으로 업데이트
+        LocalDate firstStartDate = dates.get(0);
+        item.setTitle(request.title());
+        item.setEmoji(request.emoji());
+        item.setMemo(request.memo());
+        item.setStartDate(firstStartDate);
+        item.setEndDate(firstStartDate.plusDays(durationDays));
+        item.setPriority(request.priority());
+        item.setPriorityLabel(request.priorityLabel());
+        item.setCategory(category);
+        item.setRepeatRule(newRule);
+        item.setRepeatOrigin(true);
+        item.setRepeatSeq(1);
+        item.setCustomized(false);
+
+        // 두 번째 반복 날짜부터 새 일정 생성
+        List<ScheduleItem> newItems = buildRepeatItems(request, dates, durationDays, nextOrder, category, newRule, 1);
+        scheduleItemRepository.saveAll(newItems);
+        return item;
     }
 
     // 내용만 일괄 변경 (개별 수정 일정 보호)
@@ -228,14 +313,7 @@ public class ScheduleItemService {
 
         // 새로운 반복 규칙 저장
         RepeatRuleDto rd = request.repeatRule();
-        RepeatRule newRule = repeatRuleRepository.save(RepeatRule.builder()
-                .repeatType(rd.repeatType())
-                .repeatInterval(rd.repeatInterval())
-                .repeatDays(rd.repeatDays())
-                .repeatEndType(rd.repeatEndType())
-                .repeatEndDate(rd.repeatEndDate())
-                .repeatCount(rd.repeatCount())
-                .build());
+        RepeatRule newRule = saveRepeatRule(rd);
 
         // 새로운 규칙에 따라 날짜 목록 계산
         List<LocalDate> dates = calculateRepeatDates(baseStartDate, rd);
@@ -245,26 +323,7 @@ public class ScheduleItemService {
         int nextOrder = (maxOrder == null ? 0 : maxOrder) + 1;
 
         Category category = resolveCategory(request.categoryId());
-        List<ScheduleItem> newItems = new ArrayList<>();
-        for (int i = 0; i < dates.size(); i++) {
-            LocalDate startDate = dates.get(i);
-            newItems.add(ScheduleItem.builder()
-                    .title(request.title())
-                    .emoji(request.emoji())
-                    .memo(request.memo())
-                    .startDate(startDate)
-                    .endDate(startDate.plusDays(durationDays))
-                    .priority(request.priority())
-                    .priorityLabel(request.priorityLabel())
-                    .sortOrder(nextOrder + i)
-                    .completed(false) // 신규 생성 시 미완료 초기화
-                    .category(category)
-                    .repeatRule(newRule)
-                    .repeatOrigin(i == 0)
-                    .repeatSeq(i + 1)
-                    .customized(false)
-                    .build());
-        }
+        List<ScheduleItem> newItems = buildRepeatItems(request, dates, durationDays, nextOrder, category, newRule, 0);
         return scheduleItemRepository.saveAll(newItems).get(0);
     }
 
